@@ -1,6 +1,6 @@
 import { Product, SearchResponse, Marketplace, MarketplaceStatus } from "@shared/schema";
 
-const BACKEND_URL = "http://localhost:3000/api";
+const BACKEND_URL = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
 
 // Default marketplace status for error cases
 const defaultMarketplaceStatus: Record<Marketplace, MarketplaceStatus> = {
