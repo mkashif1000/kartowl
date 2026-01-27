@@ -1,50 +1,74 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
-import { chromium } from 'playwright-extra'; // CHANGED: Import from extra
-import stealthPlugin from 'puppeteer-extra-plugin-stealth'; // NEW
-
-// Apply stealth plugin
-chromium.use(stealthPlugin());
 
 @Injectable()
 export class BrowserService implements OnModuleInit, OnModuleDestroy {
-  private browser: any; // Type is 'any' because 'playwright-extra' types are loose
+  private browser: any = null;
+  private browserAvailable: boolean = false;
   private readonly logger = new Logger(BrowserService.name);
 
   async onModuleInit() {
-    this.logger.log('🕵️ Launching Stealth Singleton Browser...');
-    this.browser = await chromium.launch({
-      headless: true,
-      args: [
-        '--no-sandbox', 
-        '--disable-setuid-sandbox',
-        '--disable-blink-features=AutomationControlled' // Critical for stealth
-      ]
-    });
+    try {
+      // Dynamically import playwright to handle cases where it's not available
+      const { chromium } = await import('playwright-extra');
+      const stealthPlugin = (await import('puppeteer-extra-plugin-stealth')).default;
+
+      chromium.use(stealthPlugin());
+
+      this.logger.log('🕵️ Launching Stealth Singleton Browser...');
+      this.browser = await chromium.launch({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-blink-features=AutomationControlled'
+        ]
+      });
+      this.browserAvailable = true;
+      this.logger.log('✅ Browser launched successfully');
+    } catch (error) {
+      this.browserAvailable = false;
+      this.logger.warn('⚠️ Playwright browser not available - web scraping features disabled');
+      this.logger.warn(`Reason: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   async onModuleDestroy() {
-    this.logger.log('🛑 Closing Browser Instance...');
-    if (this.browser) await this.browser.close();
+    if (this.browser) {
+      this.logger.log('🛑 Closing Browser Instance...');
+      await this.browser.close();
+    }
+  }
+
+  /**
+   * Check if browser is available for scraping
+   */
+  isBrowserAvailable(): boolean {
+    return this.browserAvailable;
   }
 
   /**
    * Creates a lightweight "Incognito Page" reusing the main browser.
-   * This is 100x faster than launching a new browser.
+   * Returns null if browser is not available.
    */
   async getNewPage() {
-    if (!this.browser) await this.onModuleInit();
-    
-    // Create a new context (like a fresh profile)
-    const context = await this.browser.newContext({
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      viewport: { width: 1366, height: 768 },
-    });
+    if (!this.browserAvailable || !this.browser) {
+      this.logger.warn('Browser not available - cannot create new page');
+      return null;
+    }
 
-    const page = await context.newPage();
-    
-    // Auto-close context when done to prevent memory leaks
-    // You must manually close the page in your scraper, 
-    // but this ensures the context (cookies/cache) is cleaned up.
-    return { page, context };
+    try {
+      if (!this.browser) await this.onModuleInit();
+
+      const context = await this.browser.newContext({
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        viewport: { width: 1366, height: 768 },
+      });
+
+      const page = await context.newPage();
+      return { page, context };
+    } catch (error) {
+      this.logger.error('Failed to create new page', error);
+      return null;
+    }
   }
 }
