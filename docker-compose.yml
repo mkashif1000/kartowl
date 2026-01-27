@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    container_name: kartowl-postgres
+    environment:
+      POSTGRES_DB: kartowl_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - kartowl-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: kartowl-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - kartowl-network
+
+  # KartOwl Backend
+  kartowl-backend:
+    build: ./kartowl-backend
+    container_name: kartowl-backend
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      TYPEORM_HOST: postgres
+      TYPEORM_PORT: 5432
+      TYPEORM_USERNAME: postgres
+      TYPEORM_PASSWORD: postgres
+      TYPEORM_DATABASE: kartowl_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "3000:3000"
+    networks:
+      - kartowl-network
+
+volumes:
+  postgres_data:
+
+networks:
+  kartowl-network:
+    driver: bridge

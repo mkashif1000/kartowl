@@ -1,0 +1,204 @@
+Intention
+
+ The Real Sale Status On Product Page For Every Product is Still Genuine
+
+Also When We Set Alerts, The email Should be checked if its a proper email
+
+Also I Want to Make The Alerts Functional, They Should Work
+
+The Homepage Should Load Faster, We Can Save That Data To Show it Quickly on Reload and update it periodically?
+
+The Search Takes Some Time, So When Searching, It Should maybe show Progress So The wait is easier?
+
+
+Solution
+
+You are polishing the final details of KartOwl. These changes will move the app from "functional" to "professional."
+
+Here is the step-by-step implementation for your requests.
+
+### **1. Fix "Real Sale Status" Logic (Frontend)**
+
+The reason every product says "GENUINE" is likely because the logic runs **before** the historical data (average price) is fully loaded. If `priceHistory` is empty, `avg` equals `currentPrice`, which your logic treats as Genuine.
+
+**File:** `client/src/pages/Home.tsx`
+**Action:** Move the status calculation **inside** the `if (historyData.length > 0)` block so it uses real data.
+
+```typescript
+// Inside handleProductClick in Home.tsx
+
+// ... (fetch historyData) ...
+
+if (historyData.length > 0) {
+    // 1. Calculate Stats
+    const prices = historyData.map((h: any) => Number(h.price)); // Ensure numbers
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
+    const avg = Math.round(prices.reduce((a: number, b: number) => a + b, 0) / prices.length);
+
+    // 2. DYNAMIC STATUS LOGIC (Calculated Here)
+    let status: 'genuine' | 'fair' | 'suspicious' = 'fair';
+    
+    // If current price is 5% cheaper than average -> Genuine
+    if (product.currentPrice < avg * 0.95) { 
+        status = 'genuine';
+    } 
+    // If current price is 5% more expensive -> Suspicious
+    else if (product.currentPrice > avg * 1.05) {
+        status = 'suspicious';
+    }
+
+    // 3. Update State with REAL status
+    setSelectedProduct(prev => prev ? ({
+        ...prev,
+        priceHistory: formattedHistory,
+        lowestPrice: min,
+        highestPrice: max,
+        averagePrice: avg,
+        fakeSaleStatus: status // <--- Using the calculated variable
+    }) : null);
+}
+
+```
+
+---
+
+### **2. Validation & Functional Alerts (Backend + Frontend)**
+
+To send real emails, we need **Nodemailer**.
+
+**Step 2.1: Install Backend Dependencies**
+
+```bash
+npm install nodemailer @types/nodemailer
+
+```
+
+**Step 2.2: Create Alert Service (Backend)**
+**File:** `src/alerts/alerts.service.ts`
+
+```typescript
+import { Injectable } from '@nestjs/common';
+import * as nodemailer from 'nodemailer';
+
+@Injectable()
+export class AlertsService {
+  private transporter;
+
+  constructor() {
+    // Use Gmail or any SMTP service
+    this.transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER, // Add to .env (e.g., yourgmail@gmail.com)
+        pass: process.env.EMAIL_PASS  // Add to .env (App Password, not login password)
+      }
+    });
+  }
+
+  async sendConfirmation(email: string, productUrl: string, targetPrice: number) {
+    await this.transporter.sendMail({
+      from: '"KartOwl Alerts" <noreply@kartowl.com>',
+      to: email,
+      subject: 'Price Alert Set! 🔔',
+      text: `You will be notified when the price drops below Rs ${targetPrice}.\nLink: ${productUrl}`,
+      html: `<b>Alert Set!</b><br>We'll watch this product for you: <a href="${productUrl}">Link</a>`
+    });
+  }
+}
+
+```
+
+**Step 2.3: Validate Email (Frontend)**
+**File:** `client/src/components/PriceAlertDialog.tsx`
+
+```typescript
+// Inside handleSubscribe function
+const handleSubscribe = async () => {
+  // 1. Regex Validation
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    toast({ title: "Invalid Email", description: "Please enter a valid email address.", variant: "destructive" });
+    return;
+  }
+
+  // 2. Send to Backend
+  try {
+    const res = await fetch('http://localhost:3000/api/alerts', { ... });
+    if (!res.ok) throw new Error();
+    toast({ title: "Success!", description: "Check your inbox for confirmation." });
+    setOpen(false);
+  } catch (e) { ... }
+};
+
+```
+
+---
+
+### **3. Faster Homepage (Caching)**
+
+You already have Redis. We just need to tell NestJS to cache the `/trending` endpoint specifically.
+
+**File:** `src/app.controller.ts`
+
+```typescript
+import { UseInterceptors } from '@nestjs/common';
+import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
+
+// Add these decorators to the trending endpoint
+@Get('trending')
+@UseInterceptors(CacheInterceptor) // <--- Automatically caches the response
+@CacheTTL(3600000) // <--- Cache for 1 hour (in ms)
+async getTrending() {
+  // ... existing code ...
+}
+
+```
+
+*Note: The first load will still be normal speed, but every reload after that will be instant for 1 hour.*
+
+---
+
+### **4. Better Search UX (Progress Indicator)**
+
+Instead of just a spinner, show the user exactly what is happening.
+
+**File:** `client/src/pages/Home.tsx`
+
+```typescript
+// 1. Add state for loading text
+const [loadingText, setLoadingText] = useState('Initializing search...');
+
+// 2. Update handleSearch to cycle through messages
+const handleSearch = async () => {
+    setIsLoading(true);
+    setProducts([]);
+
+    // simulate progress messages
+    const timers = [
+        setTimeout(() => setLoadingText('Scraping Daraz...'), 500),
+        setTimeout(() => setLoadingText('Checking PriceOye...'), 1500),
+        setTimeout(() => setLoadingText('Comparing prices...'), 3000),
+    ];
+
+    try {
+        const results = await searchProducts(searchQuery);
+        setProducts(results);
+    } finally {
+        setIsLoading(false);
+        timers.forEach(clearTimeout); // Cleanup
+    }
+};
+
+// 3. Update the JSX for Loading
+{isLoading && (
+  <div className="flex flex-col items-center justify-center py-20">
+    <Loader2 className="w-12 h-12 text-brand-purple animate-spin mb-4" />
+    <h3 className="text-xl font-bold animate-pulse">{loadingText}</h3>
+    <p className="text-slate-500">Scanning live markets...</p>
+  </div>
+)}
+
+```
+
+---
