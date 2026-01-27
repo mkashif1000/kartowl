@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/Home";
 import BottomNav from "@/components/BottomNav";
+import { AiAssistantPopup } from "@/components/AiAssistantPopup";
 
 // Company Pages
 import AboutPage from "@/pages/AboutPage";
@@ -45,6 +46,7 @@ function App() {
       <TooltipProvider>
         <Toaster />
         <Router />
+        <AiAssistantPopup />
         <BottomNav />
       </TooltipProvider>
     </QueryClientProvider>
