@@ -1,15 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import { BrowserService } from './browser.service';
+import { randomDelay } from './utils/throttle.utils';
 
 @Injectable()
 export class DarazService {
-  constructor(private readonly browserService: BrowserService) {}
+  constructor(private readonly browserService: BrowserService) { }
 
   async searchProduct(query: string) {
     // ✅ NEW: Get lightweight page from singleton browser
     const { page, context } = await this.browserService.getNewPage();
 
     try {
+      // Add random delay before navigation to avoid detection
+      await randomDelay(500, 1500);
+
       console.log(`🦉 KartOwl is hunting for: ${query}`);
       const searchUrl = `https://www.daraz.pk/catalog/?q=${encodeURIComponent(query)}`;
       await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
@@ -25,7 +29,7 @@ export class DarazService {
         window.scrollBy(0, 800);
         await new Promise(r => setTimeout(r, 1000));
       });
-      
+
       // 2. EXTRA WAIT FOR IMAGES TO LOAD
       await page.waitForTimeout(2000);
 
@@ -33,22 +37,22 @@ export class DarazService {
 
       const products = await page.evaluate(() => {
         const cards = document.querySelectorAll('[data-qa-locator="product-item"]');
-        
+
         return Array.from(cards).slice(0, 20).map((card: any) => {
           const cardText = card.innerText; // Grab all text for Regex searching
 
           // --- ENHANCED IMAGE FIX ---
           // PRIORITY CHANGE: Check lazy attributes FIRST, then src.
           const imgEl = card.querySelector('img');
-          let image = imgEl?.getAttribute('data-ks-lazyload') || 
-                      imgEl?.getAttribute('data-src') || 
-                      imgEl?.getAttribute('src') || '';
-          
+          let image = imgEl?.getAttribute('data-ks-lazyload') ||
+            imgEl?.getAttribute('data-src') ||
+            imgEl?.getAttribute('src') || '';
+
           // Retry mechanism for missing images on first search
           // Note: We can't use await inside page.evaluate, so we'll rely on the extra wait time before
-          
+
           if (image) {
-             image = image.replace(/_\d+x\d+.*$/, '').replace(/_.webp$/, '');
+            image = image.replace(/_\d+x\d+.*$/, '').replace(/_.webp$/, '');
           }
 
           // --- PRICE FIX (Enhanced Strategy) ---
@@ -61,7 +65,7 @@ export class DarazService {
           for (const el of priceElements) {
             // Skip elements inside <del> tags (those are original prices)
             if (el.closest('del')) continue;
-            
+
             const text = el.textContent || el.innerText || '';
             if (text.includes('Rs.') && /[\d,]+/.test(text)) {
               currentPrice = parseInt(text.replace(/[^\d]/g, '')) || 0;
@@ -87,29 +91,29 @@ export class DarazService {
           const reviewsMatch = cardText.match(/\((\d+[\d,]*)\)/); // Capture digits AND commas
           let reviews = 0;
           if (reviewsMatch) {
-             // Remove commas BEFORE parsing. "1,234" -> "1234" -> 1234
-             reviews = parseInt(reviewsMatch[1].replace(/,/g, ''));
+            // Remove commas BEFORE parsing. "1,234" -> "1234" -> 1234
+            reviews = parseInt(reviewsMatch[1].replace(/,/g, ''));
           }
 
           // --- METADATA ---
           const titleEl = card.querySelector('a[title]');
           let productUrl = titleEl?.getAttribute('href') || '';
           if (productUrl.startsWith('//')) productUrl = `https:${productUrl}`;
-          
+
           const soldMatch = cardText.match(/(\d+[\d\.]*[kK]?)\s+Sold/i);
-          
+
           // Rating (Star Width Logic) - Keep stars but remove numeric rating
           let hasRating = false;
           const styleElements = card.querySelectorAll('[style*="width"]');
           for (const el of styleElements) {
-             const widthStyle = el.getAttribute('style');
-             if (widthStyle && widthStyle.includes('%')) {
-                const num = parseInt(widthStyle.match(/(\d+)%/)?.[1] || '0');
-                if (num > 0 && num <= 100) {
-                   hasRating = true;
-                   break;
-                }
-             }
+            const widthStyle = el.getAttribute('style');
+            if (widthStyle && widthStyle.includes('%')) {
+              const num = parseInt(widthStyle.match(/(\d+)%/)?.[1] || '0');
+              if (num > 0 && num <= 100) {
+                hasRating = true;
+                break;
+              }
+            }
           }
 
           return {
@@ -121,7 +125,7 @@ export class DarazService {
             image,
             marketplace: 'daraz',
             productUrl,
-            hasRating: hasRating, 
+            hasRating: hasRating,
             reviews,
             sold: soldMatch ? soldMatch[0] : '0 Sold',
             inStock: true

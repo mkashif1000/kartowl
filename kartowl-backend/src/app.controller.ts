@@ -1,6 +1,7 @@
 // src/app.controller.ts
 import { Controller, Get, Query, Inject, Post, Body, UseInterceptors } from '@nestjs/common';
 import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
+import { SkipThrottle } from '@nestjs/throttler';
 import { DarazService } from './daraz.service';
 import { PriceOyeService } from './priceoye.service';
 import { TelemartService } from './telemart.service';
@@ -9,6 +10,27 @@ import { HistoryService } from './history.service';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { AlertsService } from './alerts/alerts.service';
+import { SearchDto } from './dto/search.dto';
+import { smartMixProducts } from './utils/product-sorting.utils';
+
+// Type for marketplace status tracking
+interface MarketplaceStatus {
+  success: boolean;
+  count: number;
+  error?: string;
+}
+
+interface SearchResponse {
+  success: boolean;
+  count: number;
+  marketplaceStatus: {
+    daraz: MarketplaceStatus;
+    priceoye: MarketplaceStatus;
+    telemart: MarketplaceStatus;
+    olx: MarketplaceStatus;
+  };
+  data: any[];
+}
 
 @Controller('api')
 export class AppController {
@@ -20,16 +42,16 @@ export class AppController {
     private readonly olxService: OlxService,
     private readonly historyService: HistoryService,
     private readonly alertsService: AlertsService
-  ) {}
+  ) { }
 
   @Get('search')
-  async search(@Query('q') query: string) {
-    if (!query) return { error: 'Query is required' };
-    
+  async search(@Query() searchDto: SearchDto): Promise<SearchResponse> {
+    const query = searchDto.q;
+
     const cacheKey = `search:${query.toLowerCase().trim()}`;
 
     // 1. Check Cache
-    const cachedData = await this.cacheManager.get(cacheKey);
+    const cachedData = await this.cacheManager.get<SearchResponse>(cacheKey);
     if (cachedData) {
       console.log(`⚡ Serving from cache: ${query}`);
       return cachedData;
@@ -37,49 +59,92 @@ export class AppController {
 
     console.log(`🚀 Scrapers engaged: ${query}`);
 
-    // 2. Real Execution (If not cached)
-    const [daraz, priceOye, telemart, olx] = await Promise.all([
-      this.darazService.searchProduct(query),
-      this.priceOyeService.searchProduct(query),
-      this.telemartService.searchProduct(query),
-      this.olxService.searchProduct(query)
+    // 2. Execute scrapers with individual error handling
+    const marketplaceStatus: SearchResponse['marketplaceStatus'] = {
+      daraz: { success: false, count: 0 },
+      priceoye: { success: false, count: 0 },
+      telemart: { success: false, count: 0 },
+      olx: { success: false, count: 0 },
+    };
+
+    // Wrap each scraper in try-catch for resilience
+    const [darazResult, priceOyeResult, telemartResult, olxResult] = await Promise.all([
+      this.safeSearch('daraz', () => this.darazService.searchProduct(query)),
+      this.safeSearch('priceoye', () => this.priceOyeService.searchProduct(query)),
+      this.safeSearch('telemart', () => this.telemartService.searchProduct(query)),
+      this.safeSearch('olx', () => this.olxService.searchProduct(query)),
     ]);
 
-    // ❌ OLD: const allProducts = [...daraz, ...priceOye, ...telemart, ...olx];
-    
-    // ✅ NEW: Mix them evenly
-    const allProducts = interleaveArrays(daraz, priceOye, telemart, olx);
-    
-    const results = {
+    // Update marketplace status
+    marketplaceStatus.daraz = darazResult.status;
+    marketplaceStatus.priceoye = priceOyeResult.status;
+    marketplaceStatus.telemart = telemartResult.status;
+    marketplaceStatus.olx = olxResult.status;
+
+    // Combine products using smart mixing algorithm
+    // This sorts by quality score and clusters products for better UX
+    const allProducts = smartMixProducts(
+      darazResult.products,
+      priceOyeResult.products,
+      telemartResult.products,
+      olxResult.products
+    );
+
+    const results: SearchResponse = {
       success: true,
       count: allProducts.length,
+      marketplaceStatus,
       data: allProducts
     };
 
     // 3. Save to Cache
-    await this.cacheManager.set(cacheKey, results); // Uses default TTL from module
+    await this.cacheManager.set(cacheKey, results);
 
-    // FIRE AND FORGET: Save history in background
+    // FIRE AND FORGET: Save history in background with full product data
     allProducts.forEach((product: any) => {
-        this.historyService.addPricePoint(
-            product.productUrl,
-            product.title,
-            product.currentPrice,
-            product.marketplace
-        ).catch(err => console.error("History save failed", err));
+      this.historyService.addPricePoint({
+        url: product.productUrl,
+        title: product.title,
+        price: product.currentPrice,
+        marketplace: product.marketplace,
+        originalPrice: product.originalPrice,
+        discount: product.discount,
+        imageUrl: product.image,
+      }).catch(err => console.error("History save failed", err));
     });
 
-    return {
-      success: true,
-      count: allProducts.length,
-      data: allProducts
-    };
+    return results;
+  }
+
+  /**
+   * Safely executes a scraper with error handling
+   */
+  private async safeSearch(
+    marketplace: string,
+    scraper: () => Promise<any[]>
+  ): Promise<{ products: any[]; status: MarketplaceStatus }> {
+    try {
+      const products = await scraper();
+      console.log(`✅ ${marketplace}: Found ${products.length} products`);
+      return {
+        products,
+        status: { success: true, count: products.length }
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`❌ ${marketplace} failed:`, errorMessage);
+      return {
+        products: [],
+        status: { success: false, count: 0, error: errorMessage }
+      };
+    }
   }
 
   @Get('history')
+  @SkipThrottle() // Don't rate limit history lookups
   async getPriceHistory(@Query('url') productUrl: string) {
     if (!productUrl) return { error: 'Product URL is required' };
-    
+
     const history = await this.historyService.getHistory(productUrl);
     return {
       success: true,
@@ -89,37 +154,21 @@ export class AppController {
   }
 
   @Get('trending')
-  @UseInterceptors(CacheInterceptor) // <--- Automatically caches the response
-  @CacheTTL(3600000) // <--- Cache for 1 hour (in ms)
+  @SkipThrottle() // Don't rate limit trending
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(3600000) // Cache for 1 hour
   async getTrending() {
     const deals = await this.historyService.getTrendingDeals();
-    // If DB is empty, fallback to empty array (Frontend will handle it)
-    return deals.length > 0 ? deals : []; 
+    return deals.length > 0 ? deals : [];
   }
 
   @Post('alerts')
   async createAlert(@Body() body: any) {
     console.log("🔔 New Alert Requested:", body);
-    
+
     // Send confirmation email
     await this.alertsService.sendConfirmation(body.email, body.productUrl, body.targetPrice);
-    
+
     return { success: true };
   }
 }
-
-// Add this helper function at the bottom of the file (outside the class)
-function interleaveArrays<T>(...arrays: T[][]): T[] {
-  const maxLength = Math.max(...arrays.map(arr => arr.length));
-  const result: T[] = [];
-  for (let i = 0; i < maxLength; i++) {
-    for (const arr of arrays) {
-      if (i < arr.length) result.push(arr[i]);
-    }
-  }
-  return result;
-}
-
-
-
-

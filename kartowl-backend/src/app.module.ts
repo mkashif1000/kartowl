@@ -2,6 +2,7 @@
 // Use this version when PostgreSQL and Redis are available
 
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { DarazService } from './daraz.service';
 import { PriceOyeService } from './priceoye.service';
@@ -15,10 +16,17 @@ import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ProductHistory } from './entities/product-history.entity';
 import { AlertsModule } from './alerts/alerts.module';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 
 @Module({
   imports: [
     ConfigModule.forRoot(),
+    // Rate Limiting: 5 requests per 60 seconds per IP
+    ThrottlerModule.forRoot([{
+      name: 'default',
+      ttl: 60000, // Time window in ms (60 seconds)
+      limit: 5,   // Max requests per window
+    }]),
     // Setup PostgreSQL Database
     TypeOrmModule.forRoot({
       type: 'postgres',
@@ -34,7 +42,7 @@ import { AlertsModule } from './alerts/alerts.module';
     TypeOrmModule.forFeature([ProductHistory]),
     // Setup Redis Cache
     CacheModule.register({
-      isGlobal: true, 
+      isGlobal: true,
       store: redisStore as any,
       host: process.env.REDIS_HOST ?? 'localhost',
       port: parseInt(process.env.REDIS_PORT ?? '6379'),
@@ -43,6 +51,18 @@ import { AlertsModule } from './alerts/alerts.module';
     AlertsModule,
   ],
   controllers: [AppController],
-  providers: [BrowserService, DarazService, PriceOyeService, TelemartService, OlxService, HistoryService],
+  providers: [
+    BrowserService,
+    DarazService,
+    PriceOyeService,
+    TelemartService,
+    OlxService,
+    HistoryService,
+    // Apply rate limiting globally
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
-export class AppModule {}
+export class AppModule { }

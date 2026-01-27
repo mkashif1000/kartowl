@@ -11,7 +11,7 @@ import shoesImg from '@assets/generated_images/Athletic_running_shoes_product_ed
 const generatePriceHistory = (basePrice: number, marketplace: Marketplace): PriceHistory[] => {
   const history: PriceHistory[] = [];
   const now = new Date();
-  
+
   for (let i = 90; i >= 0; i -= 3) {
     const date = new Date(now);
     date.setDate(date.getDate() - i);
@@ -23,7 +23,7 @@ const generatePriceHistory = (basePrice: number, marketplace: Marketplace): Pric
       marketplace
     });
   }
-  
+
   return history;
 };
 
@@ -97,7 +97,7 @@ export const mockProducts: Product[] = [
     id: '6',
     title: 'Professional Laptop 15.6" - Intel i7, 16GB RAM',
     image: laptopImg,
-    marketplace: 'aliexpress',
+    marketplace: 'olx',
     currentPrice: 138000,
     originalPrice: 155000,
     discount: 11,
@@ -110,7 +110,7 @@ export const mockProducts: Product[] = [
     id: '7',
     title: 'Smartwatch Fitness Tracker - Heart Rate Monitor',
     image: smartwatchImg,
-    marketplace: 'temu',
+    marketplace: 'olx',
     currentPrice: 5999,
     originalPrice: 8999,
     discount: 33,
@@ -175,7 +175,7 @@ export const mockProducts: Product[] = [
     id: '12',
     title: 'Running Shoes - Lightweight Athletic Footwear',
     image: shoesImg,
-    marketplace: 'temu',
+    marketplace: 'telemart',
     currentPrice: 6499,
     originalPrice: 9999,
     discount: 35,
@@ -195,7 +195,7 @@ export const getProductDetail = (id: string): ProductDetail | undefined => {
   const averagePrice = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length);
   const lowestPrice = Math.min(...prices);
   const highestPrice = Math.max(...prices);
-  
+
   let fakeSaleStatus: 'genuine' | 'fair' | 'suspicious' = 'fair';
   if (product.currentPrice < averagePrice * 0.9) {
     fakeSaleStatus = 'genuine';

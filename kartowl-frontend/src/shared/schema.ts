@@ -33,3 +33,18 @@ export type ProductDetail = Product & {
   lowestPrice: number;
   highestPrice: number;
 };
+
+// NEW: Per-marketplace status tracking
+export type MarketplaceStatus = {
+  success: boolean;
+  count: number;
+  error?: string;
+};
+
+export type SearchResponse = {
+  success: boolean;
+  count: number;
+  marketplaceStatus: Record<Marketplace, MarketplaceStatus>;
+  data: Product[];
+};
+

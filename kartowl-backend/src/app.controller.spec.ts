@@ -1,6 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AppController } from './app.controller';
-import { AppService } from './app.service';
 
 describe('AppController', () => {
   let appController: AppController;
@@ -8,15 +7,24 @@ describe('AppController', () => {
   beforeEach(async () => {
     const app: TestingModule = await Test.createTestingModule({
       controllers: [AppController],
-      providers: [AppService],
+      providers: [
+        // Mock all dependencies
+        { provide: 'CACHE_MANAGER', useValue: { get: jest.fn(), set: jest.fn() } },
+        { provide: 'DarazService', useValue: { searchProduct: jest.fn().mockResolvedValue([]) } },
+        { provide: 'PriceOyeService', useValue: { searchProduct: jest.fn().mockResolvedValue([]) } },
+        { provide: 'TelemartService', useValue: { searchProduct: jest.fn().mockResolvedValue([]) } },
+        { provide: 'OlxService', useValue: { searchProduct: jest.fn().mockResolvedValue([]) } },
+        { provide: 'HistoryService', useValue: { getHistory: jest.fn(), addPricePoint: jest.fn() } },
+        { provide: 'AlertsService', useValue: { sendConfirmation: jest.fn() } },
+      ],
     }).compile();
 
     appController = app.get<AppController>(AppController);
   });
 
-  describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
+  describe('search', () => {
+    it('should be defined', () => {
+      expect(appController).toBeDefined();
     });
   });
 });

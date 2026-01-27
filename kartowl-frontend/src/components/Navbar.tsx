@@ -1,4 +1,4 @@
-import { Search, Menu, ShoppingBag, TrendingDown } from 'lucide-react';
+import { Search, Menu, ShoppingBag, TrendingDown, Loader2 } from 'lucide-react';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { Link } from 'wouter';
@@ -13,11 +13,13 @@ interface NavbarProps {
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
   onSearch?: () => void;
+  isLoading?: boolean;
+  onGoHome?: () => void; // Navigate to home without page reload
 }
 
-export default function Navbar({ searchQuery = '', onSearchChange, onSearch }: NavbarProps) {
+export default function Navbar({ searchQuery = '', onSearchChange, onSearch, isLoading = false, onGoHome }: NavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSearch?.();
@@ -33,27 +35,27 @@ export default function Navbar({ searchQuery = '', onSearchChange, onSearch }: N
       <div className="container mx-auto px-4">
         <div className="flex items-center gap-4 h-16">
           {/* Logo */}
-          <div 
+          <div
             className="flex items-center hover-elevate px-3 py-2 rounded-md -ml-3 cursor-pointer"
-            onClick={() => window.location.reload()}
+            onClick={() => onGoHome ? onGoHome() : window.location.reload()}
             data-testid="link-home"
           >
-            <img 
-              src="/src/assets/kartowl-logo.png" 
-              alt="KartOwl Logo" 
+            <img
+              src="/src/assets/kartowl-logo.png"
+              alt="KartOwl Logo"
               className="h-10 w-auto"
             />
           </div>
-          
+
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-1 ml-4">
             {navLinks.map((link) => {
               const Icon = link.icon;
               return link.href === '/' ? (
-                <div 
+                <div
                   key={link.href}
                   className="flex items-center gap-2 px-4 py-2 rounded-md hover-elevate text-sm font-medium cursor-pointer"
-                  onClick={() => window.location.reload()}
+                  onClick={() => onGoHome ? onGoHome() : window.location.reload()}
                 >
                   <Icon className="w-4 h-4" />
                   {link.label}
@@ -85,7 +87,7 @@ export default function Navbar({ searchQuery = '', onSearchChange, onSearch }: N
               );
             })}
           </nav>
-          
+
           <div className="flex items-center gap-2 ml-auto">
             {/* Search Bar */}
             <form onSubmit={handleSubmit} className="flex-1 max-w-2xl hidden md:block">
@@ -101,17 +103,27 @@ export default function Navbar({ searchQuery = '', onSearchChange, onSearch }: N
                 />
               </div>
             </form>
-            
+
             {/* Desktop Search Button */}
-            <Button 
+            <Button
               onClick={onSearch}
               className="hidden md:flex"
               data-testid="button-navbar-search"
+              disabled={isLoading || !searchQuery.trim()}
             >
-              <Search className="w-4 h-4 mr-2" />
-              Search
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Searching...
+                </>
+              ) : (
+                <>
+                  <Search className="w-4 h-4 mr-2" />
+                  Search
+                </>
+              )}
             </Button>
-            
+
             {/* Mobile Menu */}
             <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
               <SheetTrigger asChild>
@@ -132,21 +144,28 @@ export default function Navbar({ searchQuery = '', onSearchChange, onSearch }: N
                         className="pl-10"
                       />
                     </div>
-                    <Button className="w-full mt-2" type="submit">
-                      Search
+                    <Button className="w-full mt-2" type="submit" disabled={isLoading || !searchQuery.trim()}>
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Searching...
+                        </>
+                      ) : (
+                        'Search'
+                      )}
                     </Button>
                   </form>
-                  
+
                   <nav className="flex flex-col gap-2">
                     {navLinks.map((link) => {
                       const Icon = link.icon;
                       return link.href === '/' ? (
-                        <div 
+                        <div
                           key={link.href}
                           className="flex items-center gap-3 px-4 py-3 rounded-md hover-elevate text-base font-medium cursor-pointer"
                           onClick={() => {
                             setMobileMenuOpen(false);
-                            window.location.reload();
+                            onGoHome ? onGoHome() : window.location.reload();
                           }}
                         >
                           <Icon className="w-5 h-5" />
@@ -172,7 +191,7 @@ export default function Navbar({ searchQuery = '', onSearchChange, onSearch }: N
                         </div>
                       ) : (
                         <Link key={link.href} href={link.href}>
-                          <div 
+                          <div
                             className="flex items-center gap-3 px-4 py-3 rounded-md hover-elevate text-base font-medium cursor-pointer"
                             onClick={() => setMobileMenuOpen(false)}
                           >

@@ -1,12 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { BrowserService } from './browser.service';
+import { randomDelay } from './utils/throttle.utils';
 
 @Injectable()
 export class OlxService {
   private readonly logger = new Logger(OlxService.name);
   private readonly BASE_URL = 'https://www.olx.com.pk';
 
-  constructor(private readonly browserService: BrowserService) {}
+  constructor(private readonly browserService: BrowserService) { }
 
   async searchProduct(query: string) {
     this.logger.log(`🔍 KartOwl is checking OLX for: ${query}`);
@@ -14,6 +15,9 @@ export class OlxService {
     const { page, context } = await this.browserService.getNewPage();
 
     try {
+      // Add random delay before navigation to avoid detection
+      await randomDelay(500, 1500);
+
       // OLX Search URL Pattern
       const searchUrl = `${this.BASE_URL}/items/q-${encodeURIComponent(query)}`;
       await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
@@ -36,39 +40,39 @@ export class OlxService {
           try {
             // --- Skip "Buy with Delivery" section ---
             const cardText = card.innerText || '';
-            if (cardText.toLowerCase().includes('buy with delivery') || 
-                cardText.toLowerCase().includes('delivery') && cardText.toLowerCase().includes('buy')) {
+            if (cardText.toLowerCase().includes('buy with delivery') ||
+              cardText.toLowerCase().includes('delivery') && cardText.toLowerCase().includes('buy')) {
               return; // Skip this card
             }
-            
+
             // --- Link & Title ---
             const anchor = card.querySelector('a');
             if (!anchor) return;
-            
+
             let productUrl = anchor.getAttribute('href');
             if (productUrl && !productUrl.startsWith('http')) {
               productUrl = 'https://www.olx.com.pk' + productUrl;
             }
 
             // Title extraction
-            let title = card.querySelector('[aria-label="Title"]')?.textContent || 
-                        card.querySelector('h2')?.textContent || 
-                        anchor.getAttribute('title') || 
-                        card.querySelector('img')?.getAttribute('alt') ||
-                        'Unknown Listing';
-            
+            let title = card.querySelector('[aria-label="Title"]')?.textContent ||
+              card.querySelector('h2')?.textContent ||
+              anchor.getAttribute('title') ||
+              card.querySelector('img')?.getAttribute('alt') ||
+              'Unknown Listing';
+
             title = title.trim();
 
             // --- Price ---
             let currentPrice = 0;
             let priceText = '';
             const textContent = card.innerText || '';
-            
+
             // Extract price text
             const priceTextMatch = textContent.match(/Rs\.?\s*[\d,.]+\s*(?:Lac)?/i);
             if (priceTextMatch) {
               priceText = priceTextMatch[0].trim();
-              
+
               // Extract numeric value
               const numericMatch = priceText.match(/[\d,.]+/);
               if (numericMatch) {
@@ -91,16 +95,16 @@ export class OlxService {
             if (locationEl) {
               location = locationEl.textContent?.trim() || location;
             } else {
-               const metaText = card.innerText.split('\n');
-               if (metaText.length > 2) {
-                 const commonCities = ['Lahore', 'Karachi', 'Islamabad', 'Rawalpindi', 'Multan', 'Peshawar'];
-                 for (const line of metaText) {
-                    if (commonCities.some(city => line.includes(city))) {
-                      location = line.trim();
-                      break;
-                    }
-                 }
-               }
+              const metaText = card.innerText.split('\n');
+              if (metaText.length > 2) {
+                const commonCities = ['Lahore', 'Karachi', 'Islamabad', 'Rawalpindi', 'Multan', 'Peshawar'];
+                for (const line of metaText) {
+                  if (commonCities.some(city => line.includes(city))) {
+                    location = line.trim();
+                    break;
+                  }
+                }
+              }
             }
 
             if (title && currentPrice > 0) {
