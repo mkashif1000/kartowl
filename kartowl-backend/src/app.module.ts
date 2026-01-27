@@ -11,7 +11,6 @@ import { OlxService } from './olx.service';
 import { BrowserService } from './browser.service';
 import { HistoryService } from './history.service';
 import { CacheModule } from '@nestjs/cache-manager';
-import * as redisStore from 'cache-manager-redis-store';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ProductHistory } from './entities/product-history.entity';
@@ -40,12 +39,9 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
       logging: true,
     }),
     TypeOrmModule.forFeature([ProductHistory]),
-    // Setup Redis Cache
+    // Setup In-Memory Cache (Redis not needed for Railway free tier)
     CacheModule.register({
       isGlobal: true,
-      store: redisStore as any,
-      host: process.env.REDIS_HOST ?? 'localhost',
-      port: parseInt(process.env.REDIS_PORT ?? '6379'),
       ttl: 3600000, // 1 hour (in milliseconds)
     }),
     AlertsModule,
