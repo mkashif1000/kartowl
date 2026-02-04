@@ -11,7 +11,7 @@ import { OlxService } from './olx.service';
 import { BrowserService } from './browser.service';
 import { HistoryService } from './history.service';
 import { CacheModule } from '@nestjs/cache-manager';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ProductHistory } from './entities/product-history.entity';
 import { AlertsModule } from './alerts/alerts.module';
@@ -39,10 +39,30 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
       logging: true,
     }),
     TypeOrmModule.forFeature([ProductHistory]),
-    // Setup In-Memory Cache (Redis not needed for Railway free tier)
-    CacheModule.register({
+    // Setup Cache (Redis if available, else In-Memory)
+    CacheModule.registerAsync({
       isGlobal: true,
-      ttl: 3600000, // 1 hour (in milliseconds)
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => {
+        const redisHost = configService.get<string>('REDIS_HOST');
+        if (redisHost) {
+          // Dynamic import to avoid build issues if dep is missing, though it's in package.json
+          const store = await import('cache-manager-redis-store');
+          return {
+            store: store.redisStore,
+            host: redisHost,
+            port: configService.get<number>('REDIS_PORT') || 6379,
+            password: configService.get<string>('REDIS_PASSWORD'),
+            username: configService.get<string>('REDIS_USERNAME'), // For some providers like Upstash/Railway
+            no_ready_check: true, // Often needed for cloud redis
+            ttl: 3600, // 1 hour (in seconds for Redis Store v2, check version compat)
+          };
+        }
+        return {
+          ttl: 3600000, // 1 hour (in ms for memory store)
+        };
+      },
+      inject: [ConfigService],
     }),
     AlertsModule,
   ],

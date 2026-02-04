@@ -11,8 +11,10 @@ export class TelemartService {
 
   async searchProduct(query: string) {
     this.logger.log(`Scraping Telemart for: ${query}`);
-    // ✅ NEW: Get lightweight page from singleton browser
-    const { page, context } = await this.browserService.getNewPage();
+    const browserSession = await this.browserService.getNewPage();
+    if (!browserSession) return [];
+
+    const { page, context } = browserSession;
 
     try {
       // Add random delay before navigation to avoid detection

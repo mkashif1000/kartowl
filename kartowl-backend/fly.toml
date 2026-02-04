@@ -1,0 +1,34 @@
+# fly.toml app configuration file generated for kartowl-backend-api
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'kartowl-backend-api'  # You likely need to change this to a unique name
+primary_region = 'lhr'       # London, change if you prefer another region like 'iad', 'sin'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[env]
+  PORT = '3000'
+  # Optimize Node for low memory
+  NODE_OPTIONS = '--max-old-space-size=400' 
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[vm]]
+  memory = '512mb'
+  cpu_kind = 'shared'
+  cpus = 1
+
+# Optional: Create a swap file on startup to help with Playwright memory spikes
+# This requires a custom start script or entrypoint, but we can try using a release command
+# or just hope the 512MB is enough.
+# Fly.io automatically adds some swap for 512mb machines usually, but explicit request is safer?
+# Actually default shared-cpu-1x:256mb doesn't, but 512mb might.
